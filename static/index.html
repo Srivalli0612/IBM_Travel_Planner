@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Travel Planner Agent — IBM Granite</title>
+  <style>
+    /* ── Reset & Base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --card:      #22263a;
+      --border:    #2e3248;
+      --text:      #e8eaf0;
+      --muted:     #8b90a8;
+      --accent:    #4f8ef7;
+      --accent2:   #7c5cd8;
+      --green:     #34d399;
+      --orange:    #fb923c;
+      --red:       #f87171;
+      --user-bubble:  #1e3a5f;
+      --bot-bubble:   #1e2235;
+      --font: -apple-system, "Segoe UI", system-ui, sans-serif;
+      --radius: 14px;
+    }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .header-title { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+    .header-sub   { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); animation: pulse 2s infinite;
+    }
+    .status-dot.offline { background: var(--red); animation: none; }
+    .status-label { font-size: 12px; color: var(--muted); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+    .btn-clear {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-clear:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Layout ──────────────────────────────────────────────────── */
+    .layout {
+      display: flex; flex: 1; overflow: hidden;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────── */
+    .sidebar {
+      width: 260px; background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow-y: auto;
+      padding: 16px 12px; gap: 20px; flex-shrink: 0;
+    }
+    @media (max-width: 700px) { .sidebar { display: none; } }
+    .sidebar-section h3 {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.8px; color: var(--muted); margin-bottom: 8px; padding-left: 4px;
+    }
+    .quick-btn {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      font-size: 13px; padding: 9px 12px; border-radius: 9px; cursor: pointer;
+      width: 100%; text-align: left; transition: all 0.15s; margin-bottom: 4px;
+    }
+    .quick-btn:hover { border-color: var(--accent); background: #1e2a42; }
+    .quick-btn .icon { font-size: 16px; width: 20px; text-align: center; }
+
+    .weather-widget {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; margin-top: 4px;
+    }
+    .weather-widget .w-city { font-size: 13px; font-weight: 600; }
+    .weather-widget .w-temp { font-size: 32px; font-weight: 700; color: var(--accent); margin: 4px 0; }
+    .weather-widget .w-desc { font-size: 12px; color: var(--muted); }
+    .weather-widget .w-details { display: flex; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+    .weather-search { display: flex; gap: 6px; margin-bottom: 8px; }
+    .weather-search input {
+      flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      font-size: 12px; padding: 6px 10px; border-radius: 7px; outline: none;
+    }
+    .weather-search input:focus { border-color: var(--accent); }
+    .weather-search button {
+      background: var(--accent); border: none; color: #fff;
+      font-size: 12px; padding: 6px 10px; border-radius: 7px; cursor: pointer;
+    }
+
+    .budget-widget {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px;
+    }
+    .budget-widget select, .budget-widget input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); font-size: 12px; padding: 6px 10px;
+      border-radius: 7px; margin-bottom: 6px; outline: none;
+    }
+    .budget-widget select:focus, .budget-widget input:focus { border-color: var(--accent); }
+    .budget-widget button {
+      width: 100%; background: var(--accent); border: none; color: #fff;
+      font-size: 13px; padding: 8px; border-radius: 8px; cursor: pointer; font-weight: 600;
+    }
+    .budget-result { margin-top: 10px; font-size: 12px; line-height: 1.7; color: var(--text); }
+    .budget-total { font-size: 20px; font-weight: 700; color: var(--green); margin: 4px 0; }
+
+    /* ── Chat Area ───────────────────────────────────────────────── */
+    .chat-area {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .messages {
+      flex: 1; overflow-y: auto; padding: 20px 16px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .messages::-webkit-scrollbar { width: 5px; }
+    .messages::-webkit-scrollbar-track { background: transparent; }
+    .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    /* Bubbles */
+    .msg { display: flex; gap: 10px; max-width: 800px; }
+    .msg.user  { flex-direction: row-reverse; align-self: flex-end; }
+    .msg.bot   { align-self: flex-start; }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; margin-top: 2px;
+    }
+    .msg.bot  .avatar { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+    .msg.user .avatar { background: var(--user-bubble); border: 1px solid var(--border); }
+    .bubble {
+      padding: 12px 16px; border-radius: var(--radius); font-size: 14px;
+      line-height: 1.65; max-width: 100%;
+    }
+    .msg.user .bubble {
+      background: var(--user-bubble); border-radius: var(--radius) 4px var(--radius) var(--radius);
+      color: var(--text);
+    }
+    .msg.bot  .bubble {
+      background: var(--bot-bubble); border: 1px solid var(--border);
+      border-radius: 4px var(--radius) var(--radius) var(--radius);
+    }
+    /* Markdown-like formatting inside bot bubbles */
+    .bubble h1, .bubble h2, .bubble h3 {
+      margin: 10px 0 5px; color: var(--accent); font-size: 1em; font-weight: 700;
+    }
+    .bubble p  { margin: 5px 0; }
+    .bubble ul, .bubble ol { padding-left: 18px; margin: 5px 0; }
+    .bubble li { margin: 3px 0; }
+    .bubble strong { color: var(--text); font-weight: 600; }
+    .bubble em { color: var(--muted); font-style: italic; }
+    .bubble hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+    .bubble code {
+      background: var(--card); padding: 2px 6px; border-radius: 4px;
+      font-size: 12px; font-family: monospace;
+    }
+    .bubble pre {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; overflow-x: auto; margin: 8px 0;
+    }
+    .bubble pre code { background: none; padding: 0; }
+
+    .tools-used {
+      display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px;
+    }
+    .tool-tag {
+      font-size: 10px; padding: 2px 8px; border-radius: 99px;
+      background: var(--card); border: 1px solid var(--border); color: var(--muted);
+    }
+    .msg-time { font-size: 10px; color: var(--muted); margin-top: 4px; text-align: right; }
+    .msg.bot .msg-time { text-align: left; }
+
+    /* Typing indicator */
+    .typing { display: flex; align-items: center; gap: 5px; padding: 10px 16px; }
+    .typing span {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--muted);
+      animation: bounce 1.2s infinite;
+    }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-6px); }
+    }
+
+    /* Welcome state */
+    .welcome {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px; padding: 20px;
+      text-align: center;
+    }
+    .welcome-icon { font-size: 52px; }
+    .welcome h2 { font-size: 22px; font-weight: 700; }
+    .welcome p  { font-size: 14px; color: var(--muted); max-width: 420px; line-height: 1.6; }
+    .welcome-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
+    .chip {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      font-size: 13px; padding: 8px 14px; border-radius: 99px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Input bar */
+    .input-bar {
+      padding: 14px 16px; background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; gap: 10px; align-items: flex-end;
+    }
+    textarea {
+      flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      font-size: 14px; font-family: var(--font); padding: 11px 14px;
+      border-radius: 12px; resize: none; outline: none; max-height: 140px;
+      line-height: 1.5; transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--muted); }
+    .send-btn {
+      width: 44px; height: 44px; background: var(--accent); border: none;
+      border-radius: 12px; cursor: pointer; color: #fff; font-size: 18px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      transition: background 0.15s; align-self: flex-end;
+    }
+    .send-btn:hover { background: #3a7de8; }
+    .send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+    /* Error toast */
+    .toast {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      background: var(--red); color: #fff; font-size: 13px;
+      padding: 10px 20px; border-radius: 10px; z-index: 100;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────── -->
+<header>
+  <div class="header-left">
+    <div class="logo-icon">✈</div>
+    <div>
+      <div class="header-title">Travel Planner Agent</div>
+      <div class="header-sub">Powered by IBM Granite · watsonx.ai</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">Connecting…</span>
+    <button class="btn-clear" onclick="clearChat()">🗑 New Trip</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Quick prompts -->
+    <div class="sidebar-section">
+      <h3>Quick Actions</h3>
+      <button class="quick-btn" onclick="sendQuick('Suggest top beach destinations for a budget trip')">
+        <span class="icon">🏖</span> Beach Destinations
+      </button>
+      <button class="quick-btn" onclick="sendQuick('Plan a 5-day cultural trip to Japan')">
+        <span class="icon">🗾</span> Japan Itinerary
+      </button>
+      <button class="quick-btn" onclick="sendQuick('Best budget accommodation options for backpackers')">
+        <span class="icon">🏨</span> Accommodation Tips
+      </button>
+      <button class="quick-btn" onclick="sendQuick('What transport options are available for international travel?')">
+        <span class="icon">🚀</span> Transport Guide
+      </button>
+      <button class="quick-btn" onclick="sendQuick('Give me a packing list for a tropical beach vacation')">
+        <span class="icon">🎒</span> Packing List
+      </button>
+      <button class="quick-btn" onclick="sendQuick('What are the visa requirements for travelling to Europe?')">
+        <span class="icon">🛂</span> Visa Info
+      </button>
+    </div>
+
+    <!-- Weather Widget -->
+    <div class="sidebar-section">
+      <h3>Live Weather</h3>
+      <div class="weather-search">
+        <input id="weatherCity" type="text" placeholder="City name…" value="Paris" />
+        <button onclick="fetchWeather()">Go</button>
+      </div>
+      <div class="weather-widget" id="weatherWidget">
+        <div class="w-city" id="wCity">Loading…</div>
+        <div class="w-temp" id="wTemp">—</div>
+        <div class="w-desc" id="wDesc"></div>
+        <div class="w-details">
+          <span id="wHumidity">💧 —</span>
+          <span id="wWind">💨 —</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Budget Estimator -->
+    <div class="sidebar-section">
+      <h3>Budget Estimator</h3>
+      <div class="budget-widget">
+        <input id="budgetDays" type="number" min="1" max="365" value="7" placeholder="Days" />
+        <input id="budgetPeople" type="number" min="1" max="20" value="2" placeholder="Travellers" />
+        <select id="budgetTier">
+          <option value="budget">Budget (backpacker)</option>
+          <option value="mid-range" selected>Mid-range</option>
+          <option value="luxury">Luxury</option>
+        </select>
+        <button onclick="calcBudget()">Estimate Cost</button>
+        <div class="budget-result" id="budgetResult"></div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Chat Area ─────────────────────────────────────────────────── -->
+  <main class="chat-area">
+
+    <!-- Welcome screen (shown until first message) -->
+    <div class="welcome" id="welcomeScreen">
+      <div class="welcome-icon">🌍</div>
+      <h2>Where do you want to go?</h2>
+      <p>I'm your AI Travel Planner powered by IBM Granite. Ask me anything — destinations, itineraries, hotels, flights, packing lists, or visa info.</p>
+      <div class="welcome-chips">
+        <span class="chip" onclick="sendQuick('Plan a romantic 7-day trip to Paris for 2 people')">Paris in 7 days 🗼</span>
+        <span class="chip" onclick="sendQuick('Best adventure destinations in South America')">South America 🌿</span>
+        <span class="chip" onclick="sendQuick('How much does a 10-day trip to Bali cost for 2 people?')">Bali budget 🌺</span>
+        <span class="chip" onclick="sendQuick('What is the weather like in Tokyo in March?')">Tokyo weather 🌸</span>
+        <span class="chip" onclick="sendQuick('Family-friendly destinations in Europe')">Family travel 👨‍👩‍👧</span>
+        <span class="chip" onclick="sendQuick('Create a 3-day itinerary for Rome with cultural highlights')">Rome in 3 days 🏛</span>
+      </div>
+    </div>
+
+    <!-- Messages container (hidden until first message) -->
+    <div class="messages" id="messages" style="display:none"></div>
+
+    <!-- Input bar -->
+    <div class="input-bar">
+      <textarea id="msgInput" rows="1" placeholder="Ask about destinations, itineraries, hotels, packing…"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send">
+        &#9658;
+      </button>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── State ────────────────────────────────────────────────────────
+  const SESSION_ID = 'sess_' + Math.random().toString(36).slice(2, 10);
+  let   isTyping   = false;
+
+  // ── Health check ─────────────────────────────────────────────────
+  async function checkHealth() {
+    try {
+      const r = await fetch('/api/health');
+      if (r.ok) {
+        const d = await r.json();
+        document.getElementById('statusDot').className   = 'status-dot';
+        document.getElementById('statusLabel').textContent = d.model?.split('/').pop() || 'Online';
+      } else { setOffline(); }
+    } catch { setOffline(); }
+  }
+  function setOffline() {
+    document.getElementById('statusDot').className   = 'status-dot offline';
+    document.getElementById('statusLabel').textContent = 'Offline';
+  }
+
+  // ── Weather ──────────────────────────────────────────────────────
+  async function fetchWeather() {
+    const city = document.getElementById('weatherCity').value.trim() || 'Paris';
+    document.getElementById('wCity').textContent = 'Loading…';
+    try {
+      const r = await fetch('/api/weather?city=' + encodeURIComponent(city));
+      const d = await r.json();
+      document.getElementById('wCity').textContent    = `${d.city}, ${d.country}`;
+      document.getElementById('wTemp').textContent    = `${d.temperature}°C`;
+      document.getElementById('wDesc').textContent    = d.description;
+      document.getElementById('wHumidity').textContent = `💧 ${d.humidity}%`;
+      document.getElementById('wWind').textContent    = `💨 ${d.wind_speed} m/s`;
+    } catch { document.getElementById('wCity').textContent = 'Unavailable'; }
+  }
+
+  // ── Budget ──────────────────────────────────────────────────────
+  async function calcBudget() {
+    const days   = document.getElementById('budgetDays').value   || 7;
+    const people = document.getElementById('budgetPeople').value || 2;
+    const tier   = document.getElementById('budgetTier').value;
+    try {
+      const r = await fetch(`/api/budget?days=${days}&people=${people}&tier=${tier}`);
+      const d = await r.json();
+      const el = document.getElementById('budgetResult');
+      const bd = d.daily_breakdown;
+      el.innerHTML = `
+        <div class="budget-total">$${d.estimated_total_usd.toLocaleString()}</div>
+        <div style="color:var(--muted);font-size:11px;">${d.days} days · ${d.people} person(s) · ${d.tier}</div>
+        <hr style="border-color:var(--border);margin:8px 0">
+        <div>🏨 Accommodation: $${bd.accommodation}/day</div>
+        <div>🍽 Food: $${bd.food}/day</div>
+        <div>🚌 Transport: $${bd.transport}/day</div>
+        <div>🎟 Activities: $${bd.activities}/day</div>
+        <div style="color:var(--muted);font-size:10px;margin-top:6px">${d.note}</div>`;
+    } catch { document.getElementById('budgetResult').textContent = 'Error estimating budget.'; }
+  }
+
+  // ── Chat helpers ─────────────────────────────────────────────────
+  function showMessages() {
+    document.getElementById('welcomeScreen').style.display = 'none';
+    document.getElementById('messages').style.display      = 'flex';
+  }
+
+  function appendMessage(role, content, toolsUsed) {
+    showMessages();
+    const box   = document.getElementById('messages');
+    const wrap  = document.createElement('div');
+    wrap.className = `msg ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = role === 'user' ? '👤' : '✈';
+
+    const right = document.createElement('div');
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = role === 'bot' ? markdownToHtml(content) : escHtml(content);
+
+    if (toolsUsed && toolsUsed.length) {
+      const tags = document.createElement('div');
+      tags.className = 'tools-used';
+      toolsUsed.forEach(t => {
+        const tag = document.createElement('span');
+        tag.className = 'tool-tag';
+        tag.textContent = '🔧 ' + t;
+        tags.appendChild(tag);
+      });
+      bubble.appendChild(tags);
+    }
+
+    const time = document.createElement('div');
+    time.className = 'msg-time';
+    time.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+    right.appendChild(bubble);
+    right.appendChild(time);
+    wrap.appendChild(avatar);
+    wrap.appendChild(right);
+    box.appendChild(wrap);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function showTyping() {
+    showMessages();
+    const box  = document.getElementById('messages');
+    const wrap = document.createElement('div');
+    wrap.id    = 'typing';
+    wrap.className = 'msg bot';
+    wrap.innerHTML = `
+      <div class="avatar">✈</div>
+      <div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
+    box.appendChild(wrap);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function hideTyping() {
+    const el = document.getElementById('typing');
+    if (el) el.remove();
+  }
+
+  // ── Send message ─────────────────────────────────────────────────
+  async function sendMessage() {
+    if (isTyping) return;
+    const input = document.getElementById('msgInput');
+    const text  = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    autoResize(input);
+    appendMessage('user', text);
+    document.getElementById('sendBtn').disabled = true;
+    isTyping = true;
+    showTyping();
+
+    try {
+      const r = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: SESSION_ID, message: text}),
+      });
+      const d = await r.json();
+      hideTyping();
+      if (!r.ok) {
+        const errMsg = d.setup_required
+          ? '⚠️ IBM credentials not configured yet.\n\nPlease edit your `.env` file:\n• Set `IBM_API_KEY`\n• Set `IBM_PROJECT_ID`\n\nThen restart the server.'
+          : (d.error || 'Something went wrong. Please try again.');
+        appendMessage('bot', errMsg);
+      } else {
+        appendMessage('bot', d.reply, d.tools_used);
+      }
+    } catch (e) {
+      hideTyping();
+      appendMessage('bot', '⚠️ Cannot reach the server. Make sure the Flask app is running.');
+    }
+
+    isTyping = false;
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('msgInput').focus();
+  }
+
+  function sendQuick(text) {
+    document.getElementById('msgInput').value = text;
+    sendMessage();
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+  }
+
+  async function clearChat() {
+    try {
+      await fetch('/api/session/clear', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: SESSION_ID}),
+      });
+    } catch {}
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('messages').style.display  = 'none';
+    document.getElementById('welcomeScreen').style.display = 'flex';
+  }
+
+  // ── Markdown → HTML (lightweight) ────────────────────────────────
+  function markdownToHtml(md) {
+    let h = escHtml(md);
+    // Code blocks
+    h = h.replace(/```[\s\S]*?```/g, m => {
+      const code = m.slice(3, -3).replace(/^[^\n]*\n/, '');
+      return `<pre><code>${code}</code></pre>`;
+    });
+    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Headings
+    h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    h = h.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
+    h = h.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
+    // Bold / italic
+    h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/\*(.+?)\*/g,    '<em>$1</em>');
+    // HR
+    h = h.replace(/^---+$/gm, '<hr>');
+    // Lists
+    h = h.replace(/((?:^[-*] .+\n?)+)/gm, m => {
+      const items = m.trim().split('\n').map(l => `<li>${l.replace(/^[-*] /, '')}</li>`).join('');
+      return `<ul>${items}</ul>`;
+    });
+    h = h.replace(/((?:^\d+\. .+\n?)+)/gm, m => {
+      const items = m.trim().split('\n').map(l => `<li>${l.replace(/^\d+\. /, '')}</li>`).join('');
+      return `<ol>${items}</ol>`;
+    });
+    // Paragraphs (double newline)
+    h = h.replace(/\n{2,}/g, '</p><p>');
+    h = h.replace(/\n/g, '<br>');
+    return `<p>${h}</p>`;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────
+  checkHealth();
+  fetchWeather();
+  document.getElementById('msgInput').focus();
+</script>
+</body>
+</html>
