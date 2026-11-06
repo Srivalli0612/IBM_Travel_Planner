@@ -103,7 +103,7 @@ def chat(messages: list) -> str:
     token      = _get_iam_token()
     url        = _get_env("IBM_WATSONX_URL") or "https://us-south.ml.cloud.ibm.com"
     project_id = _get_env("IBM_PROJECT_ID")
-    model_id   = _get_env("IBM_GRANITE_MODEL_ID") or "ibm/granite-3-8b-instruct"
+    model_id   = _get_env("IBM_GRANITE_MODEL_ID") or "ibm/granite-13b-chat-v2"
 
     if not project_id or project_id == "your_ibm_project_id_here":
         raise EnvironmentError(
