@@ -83,18 +83,25 @@ Always:
 
 
 def _build_prompt(messages: list) -> str:
-    """Convert messages list into Granite chat template format."""
-    parts = [f"<|system|>\n{SYSTEM_PROMPT}\n<|end_of_text|>"]
+    """
+    Convert messages list into a plain prompt for granite-4-h-small.
+    This model uses a simple Human/Assistant format without special tokens.
+    """
+    # Start with system instructions as a plain prefix
+    parts = [SYSTEM_PROMPT, ""]
+
     for msg in messages:
         role    = msg.get("role", "user")
         content = msg.get("content", "").strip()
         if role == "system":
             continue
         elif role == "user":
-            parts.append(f"<|user|>\n{content}\n<|end_of_text|>")
+            parts.append(f"Human: {content}")
         elif role == "assistant":
-            parts.append(f"<|assistant|>\n{content}\n<|end_of_text|>")
-    parts.append("<|assistant|>")
+            parts.append(f"Assistant: {content}")
+
+    # Open the assistant turn
+    parts.append("Assistant:")
     return "\n".join(parts)
 
 
@@ -120,6 +127,7 @@ def chat(messages: list) -> str:
             "temperature":        0.7,
             "top_p":              0.9,
             "repetition_penalty": 1.1,
+            "stop_sequences":     ["Human:", "\nHuman:"],
         },
     }
 
