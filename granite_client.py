@@ -1,52 +1,66 @@
 """
-IBM Granite Travel Planner — LLM Client
-Handles all communication with IBM watsonx.ai using the ibm-watsonx-ai SDK.
+IBM Granite Travel Planner — LLM Client (HTTP version)
+Uses direct REST API calls instead of ibm-watsonx-ai SDK.
+This avoids pandas/pillow/numpy build issues on Streamlit Cloud.
 """
 
 import os
+import requests
 from dotenv import load_dotenv
-from ibm_watsonx_ai import Credentials
-from ibm_watsonx_ai.foundation_models import ModelInference
-from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
 
 load_dotenv()
 
-_client: ModelInference | None = None
+# Try to load from Streamlit secrets if available
+try:
+    import streamlit as st
+    _secrets = st.secrets
+except Exception:
+    _secrets = {}
+
+def _get_env(key: str) -> str:
+    """Get value from Streamlit secrets first, then .env"""
+    try:
+        import streamlit as st
+        val = st.secrets.get(key, "")
+        if val:
+            return val
+    except Exception:
+        pass
+    return os.getenv(key, "")
 
 
-def _get_client() -> ModelInference:
-    """Lazily initialise and return a singleton ModelInference client."""
-    global _client
-    if _client is not None:
-        return _client
+_iam_token: str = ""
+_iam_token_expiry: float = 0.0
 
-    api_key    = os.getenv("IBM_API_KEY")
-    project_id = os.getenv("IBM_PROJECT_ID")
-    url        = os.getenv("IBM_WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
-    model_id   = os.getenv("IBM_GRANITE_MODEL_ID", "ibm/granite-4-h-small")
 
+def _get_iam_token() -> str:
+    """Get or refresh IBM IAM Bearer token."""
+    global _iam_token, _iam_token_expiry
+    import time
+
+    if _iam_token and time.time() < _iam_token_expiry - 60:
+        return _iam_token
+
+    api_key = _get_env("IBM_API_KEY")
     if not api_key or api_key == "your_ibm_api_key_here":
         raise EnvironmentError(
-            "IBM_API_KEY is not set. Please configure your .env file."
-        )
-    if not project_id or project_id == "your_ibm_project_id_here":
-        raise EnvironmentError(
-            "IBM_PROJECT_ID is not set. Please configure your .env file."
+            "IBM_API_KEY is not set. Please configure your Streamlit secrets or .env file."
         )
 
-    credentials = Credentials(url=url, api_key=api_key)
-    _client = ModelInference(
-        model_id=model_id,
-        credentials=credentials,
-        project_id=project_id,
-        params={
-            GenParams.MAX_NEW_TOKENS: 1024,
-            GenParams.TEMPERATURE:    0.7,
-            GenParams.TOP_P:          0.9,
-            GenParams.REPETITION_PENALTY: 1.1,
+    resp = requests.post(
+        "https://iam.cloud.ibm.com/identity/token",
+        data={
+            "grant_type":    "urn:ibm:params:oauth:grant-type:apikey",
+            "apikey":        api_key,
         },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=15,
     )
-    return _client
+    resp.raise_for_status()
+    data = resp.json()
+    _iam_token        = data["access_token"]
+    _iam_token_expiry = time.time() + data.get("expires_in", 3600)
+    return _iam_token
 
 
 SYSTEM_PROMPT = """You are an expert AI Travel Planner powered by IBM Granite. Your job is to help users plan amazing, personalised trips.
@@ -57,50 +71,76 @@ You can:
 - Recommend accommodation options (budget, mid-range, luxury)
 - Suggest transportation modes (flights, trains, buses, car rentals)
 - Provide packing tips, visa information, and local customs
-- Alert users about weather, safety, or travel advisories
-- Optimise schedules to minimise travel time and cost
+- Provide weather-aware travel advice
+- Estimate trip budgets and costs
 
 Always:
 - Ask clarifying questions if the user's request is vague
 - Structure itineraries clearly with Day 1, Day 2, etc.
 - Include estimated costs where possible
 - Mention must-see attractions and hidden gems
-- Be friendly, enthusiastic, and concise
-
-When responding to itinerary requests, format them with clear headings and bullet points."""
+- Be friendly, enthusiastic, and concise"""
 
 
-def chat(messages: list[dict]) -> str:
-    """
-    Send a conversation to IBM Granite and return the assistant reply.
-
-    `messages` is a list of {"role": "user"|"assistant"|"system", "content": str}
-    """
-    client = _get_client()
-
-    # Build the full prompt using Granite's chat template
-    prompt = _build_prompt(messages)
-    result  = client.generate_text(prompt=prompt)
-    return result.strip()
-
-
-def _build_prompt(messages: list[dict]) -> str:
-    """
-    Convert OpenAI-style messages array into a Granite-compatible prompt.
-    Granite 3.x uses the standard <|system|> / <|user|> / <|assistant|> tokens.
-    """
+def _build_prompt(messages: list) -> str:
+    """Convert messages list into Granite chat template format."""
     parts = [f"<|system|>\n{SYSTEM_PROMPT}\n<|end_of_text|>"]
-
     for msg in messages:
         role    = msg.get("role", "user")
         content = msg.get("content", "").strip()
         if role == "system":
-            continue  # Already injected above
+            continue
         elif role == "user":
             parts.append(f"<|user|>\n{content}\n<|end_of_text|>")
         elif role == "assistant":
             parts.append(f"<|assistant|>\n{content}\n<|end_of_text|>")
-
-    # Open the final assistant turn for Granite to complete
     parts.append("<|assistant|>")
     return "\n".join(parts)
+
+
+def chat(messages: list) -> str:
+    """Send conversation to IBM Granite via REST API and return reply."""
+    token      = _get_iam_token()
+    url        = _get_env("IBM_WATSONX_URL") or "https://us-south.ml.cloud.ibm.com"
+    project_id = _get_env("IBM_PROJECT_ID")
+    model_id   = _get_env("IBM_GRANITE_MODEL_ID") or "ibm/granite-3-8b-instruct"
+
+    if not project_id or project_id == "your_ibm_project_id_here":
+        raise EnvironmentError(
+            "IBM_PROJECT_ID is not set. Please configure your Streamlit secrets or .env file."
+        )
+
+    endpoint = f"{url.rstrip('/')}/ml/v1/text/generation?version=2023-05-29"
+    payload  = {
+        "model_id":   model_id,
+        "project_id": project_id,
+        "input":      _build_prompt(messages),
+        "parameters": {
+            "max_new_tokens":     1024,
+            "temperature":        0.7,
+            "top_p":              0.9,
+            "repetition_penalty": 1.1,
+        },
+    }
+
+    resp = requests.post(
+        endpoint,
+        json=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type":  "application/json",
+        },
+        timeout=60,
+    )
+
+    if resp.status_code == 404:
+        detail = resp.json()
+        raise EnvironmentError(f"Cannot set Project or Space\nReason: {resp.text}")
+    if resp.status_code == 403:
+        detail = resp.json()
+        errors = detail.get("errors", [{}])
+        raise EnvironmentError(f"LLM error: {errors[0].get('message', resp.text)}")
+
+    resp.raise_for_status()
+    result = resp.json()
+    return result["results"][0]["generated_text"].strip()
